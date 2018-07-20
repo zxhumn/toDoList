@@ -1,0 +1,435 @@
+<html>
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title></title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="stylesheet" href="./css/index.css">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+
+
+</head>
+
+<body>
+    <section class="todoapp">
+        <header class="header">
+            <h1>任务清单</h1>
+            <input autofocus="autofocus" autocomplete="off" placeholder="想干啥?" class="new-todo" @keyup.enter="addToDo" v-model="inputTodo">
+        </header>
+        <section class="main">
+            <input v-model="checkAll" @change="checkAllTodo" type="checkbox" class="toggle-all">
+            <ul class="todo-list" v-cloak>
+                <li class="todo" :class="{completed:item.complete,editing:item.isEdit}" v-for="(item, index) in visiableList">
+                    <div class="view">
+                        <input type="checkbox" @change="checkIsCheckAll" v-model="item.complete" class="toggle">
+                        <!-- 获取事件参数 -->
+                        <label @dblclick="editTodo(index,$event)">{{item.name}}</label>
+                        <button class="destroy" v-on:click="deleteTodo(index)"></button>
+                    </div>
+                    <input type="text" v-focus v-if="item.isEdit" v-model="cacheEdit" @keyup.enter="saveEdit(index)" @keyup.esc="cancelEdit(index)"
+                        @blur="cancelEdit(index)" class="edit">
+                </li>
+                <!-- <h2>下面的是模板</h2>
+                <li class="todo ">
+                    <div class="view">
+                        <input type="checkbox" class="toggle">
+                        <label>21</label>
+                        <button class="destroy"></button>
+                    </div>
+                    <input type="text" class="edit">
+                </li>
+                <li class="todo completed">
+                    <div class="view">
+                        <input type="checkbox" class="toggle">
+                        <label>21</label>
+                        <button class="destroy"></button>
+                    </div>
+                    <input type="text" class="edit">
+                </li>
+                <li class="todo editing">
+                    <div class="view">
+                        <input type="checkbox" class="toggle">
+                        <label>21</label>
+                        <button class="destroy"></button>
+                    </div>
+                    <input type="text" class="edit">
+                </li> -->
+            </ul>
+        </section>
+        <footer class="footer">
+            <span class="todo-count" v-if="noDoneNum!=0">
+                <strong>{{noDoneNum}}</strong> 项 剩余
+            </span>
+            <ul class="filters">
+                <li>
+                    <a href="#/all" :class="{selected:visibility=='全部'}" @click="changeVisiable('全部')">全部</a>
+                </li>
+                <li>
+                    <a href="#/active" :class="{selected:visibility=='未完成'}" @click="changeVisiable('未完成')">未完成</a>
+                </li>
+                <li>
+                    <a href="#/completed" :class="{selected:visibility=='完成'}" @click="changeVisiable('完成')">完成</a>
+                </li>
+            </ul>
+            <button @click="clearList" class="clear-completed">
+                清空列表
+            </button>
+        </footer>
+    </section>
+    <footer class="info">
+        <p>双击进入编辑状态</p>
+        <p>鸣谢:
+            <a href="http://evanyou.me">Evan You</a>
+        </p>
+        <p>参考于
+            <a href="http://todomvc.com">TodoMVC</a>
+        </p>
+    </footer>
+
+
+</body>
+
+</html>
+<script type="text/javascript" src="./lib/vue.js"></script>
+<!-- 
+    注意点
+    类名绑定
+        <li  :class="['todo',{completed:item.complete}]">
+                第一个toDo当做字符串解析,始终都在,completed是否可用 取决于 item.complete的值
+        <li class="todo"  :class="{completed:item.complete}">
+                todo这个类名称始终都在  动态改变的类名是 completed
+-->
+<script>
+    /*
+        分析
+            1.数据结构
+                页面中toDo列表的保存的数据
+                [{name:'洗碗',complete:false}]
+            2.根据数据渲染页面li
+                判断是否选中
+                checkbox进行双向绑定
+            3.点击新增
+                点击回车  获取输入的内容 增加到列表中 清空输入框 
+                输入框为空 点击回车没效果
+            4.点击删除对应的待办事项
+                点击button 删除对应的那个事项
+                绑定时 传入下表
+            5.编辑待办事项
+                获取到当前修改的值
+                保存到 cacheEdit 中
+                双击进入编辑状态 加上类名
+            6.保存修改
+                编辑状态下 点击回车即可
+            7.点击esc取消修改
+                编辑状态下 点击esc即可
+                最开始的时候直接双向绑定 取消之后 无法还原的
+                增加一个临时变量 用来保存 临时的操作 知道确认修改时 才保存 否则 直接取消
+            8.重复编辑问题
+                代码中并没问判断是否有其他的文本框进入编辑
+                为了解决这个问题 每次进入编辑是 把所有的编辑状态全部设置为 false 再修改当前这一个即可
+            9.失去焦点 保存 或者取消
+                问文本框增加 @blur 事件 指向 取消 或者  保存 的逻辑  即可
+            10.清空
+                为清空按钮绑定点击事件
+                清空data中的toDoList = [] 即可完成清空
+            11.计数
+                使用计算属性 计算未办的事项 返回个数即可
+            12.筛选高亮逻辑
+                增加一个标记当前状态的变量
+                因为选项不止有2中 字符串来记录(数字1,2,3)
+                三个a标签绑定点击事件
+                点击修改标示变量的值
+                三个a标签的类名 是需要进行判断
+            13.显示筛选的值
+                计算属性
+                生成li标签是 不是 循环总数组
+                计算属性中的数组
+                逻辑
+                    根据标示状态 进行数组的筛选
+                    返回筛选之后的值
+
+            14,15号逻辑 使用click 触发时 value并没有改变 使用change即可
+            14.全选
+                使用click 触发时 value还没有改变
+                替换为 change事件
+            15.判断是否全部选中
+                click ul 使用冒泡的方式
+                直接把事件绑定给  checkbox 使用 change事件即可
+            16.数据常驻
+                localStorage取值 
+                    有值 赋值
+                    没值 初始值[]
+                
+                浏览器关闭
+                    数据保存到 localStorage中
+
+            
+    */
+
+    // 尝试读取值
+    let toDoList = JSON.parse(window.localStorage.getItem('SZHM19toDoList'));
+    if (toDoList) {
+        // 有值
+        console.log('y');
+    } else {
+        // 没值
+        console.log('n');
+        toDoList = [
+            {
+                name: '吃饭',
+                complete: true,
+                isEdit: false
+            },
+            {
+                name: '睡觉',
+                complete: false,
+                isEdit: false
+            },
+            {
+                name: '打豆豆',
+                complete: true,
+                isEdit: false
+            },
+
+        ]
+    }
+
+
+    // 注册一个自定义的全局指令 让他生效
+    // 注册一个全局自定义指令 `v-focus`
+    Vue.directive('focus', {
+        // 当被绑定的元素插入到 DOM 中时……
+        inserted: function (el) {
+            console.log('我触发啦');
+            console.log(el);
+            // 聚焦元素
+            el.focus()
+        }
+    })
+
+    // vue
+    let app = new Vue({
+        // 选择器
+        el: ".todoapp",
+        // 数据
+        data: {
+            // 是否全选
+            checkAll: false,
+            // 输入的待办事项
+            inputTodo: '',
+            // 暂存此次的修改
+            cacheEdit: '',
+            // 当前列表的筛选条件
+            // 全部 未完成 完成
+            visibility: '全部',
+            // 待办列表
+            /* 
+                name 内容
+                complete 是否完成
+                isEdit 是否正在编辑
+            */
+            toDoList
+        },
+        // 方法
+        methods: {
+            // 点击新增数据
+            addToDo() {
+                // 进来的时候 判断是否为空
+                this.inputTodo = this.inputTodo.trim();
+                if (this.inputTodo != '') {
+                    // 输入的内容
+                    // console.log(this.inputTodo);
+                    // 加入数组
+                    this.toDoList.push({
+                        name: this.inputTodo,
+                        complete: false,
+                        // 增加编辑状态的字段
+                        isEdit: false
+                    })
+                    // this.toDoList.push(this.inputTodo);
+                    // 清空数据
+                    this.inputTodo = '';
+                }
+            }
+            // 删除对应的待办事项
+            , deleteTodo(index) {
+                console.log(index);
+                // 从index开始删除一个
+                this.toDoList.splice(index, 1);
+            }
+            // 进入编辑状态
+            , editTodo(index, event) {
+                // console.log(index);
+                // 避免重复编辑 取消其他的编辑状态
+                // jQ js排他
+                for (let i = 0; i < this.toDoList.length; i++) {
+                    this.toDoList[i].isEdit = false;
+                }
+                // 编辑状态取反
+                this.toDoList[index].isEdit = !this.toDoList[index].isEdit;
+
+                // 取值
+                this.cacheEdit = this.toDoList[index].name;
+                // 赋值
+            }
+            // 取消编辑状态 保存修改
+            , saveEdit(index) {
+                // 从暂存值获取 
+                // 赋值到数组中
+                this.toDoList[index].name = this.cacheEdit;
+                // 修改 当前这个待办事项的 isEdit的值
+                this.toDoList[index].isEdit = false;
+            }
+            // 取消编辑
+            , cancelEdit(index) {
+                console.log('取消啦');
+                // 推出编辑状态
+                this.toDoList[index].isEdit = false;
+                // 还原为原始的值
+            }
+            // 清空数据
+            , clearList() {
+                // 设置 待办事项的数组为 空数组即可
+                this.toDoList = [];
+            }
+            // 修改显示的条件
+            , changeVisiable(data) {
+                console.log(data);
+                this.visibility = data;
+            }
+            // 选中所有的下方checkbox
+            , checkAllTodo() {
+                // 获取自己的选中状态
+                console.log(this.checkAll);
+                for (let i = 0; i < this.toDoList.length; i++) {
+                    this.toDoList[i].complete = this.checkAll;
+                }
+            }
+            // 判断是否全部选中
+            , checkIsCheckAll() {
+                console.log('hahaha');
+                // 总个数
+                let totalCount = this.toDoList.length;
+                // 选中的个数
+                let checkedCount = this.toDoList.filter((v, i) => {
+                    if (v.complete == true) return v;
+                }).length;
+                console.log(totalCount);
+                console.log(checkedCount);
+                // 赋值给 checkAll
+                this.checkAll = totalCount == checkedCount;
+            }
+        }
+        // 计算属性
+        , computed: {
+            // 计算 未完成的个数
+            noDoneNum() {
+                // 返回值告诉vue
+                // complete 为 false的总个数
+                // let num = 0;
+                // for(let i =0;i<this.toDoList.length;i++){
+                //     if(this.toDoList[i].complete==false){
+                //         num++;
+                //     }
+                // }
+
+                // es5增加了很多数组的方法 筛选数组
+                // 数组的sort方法类似 传入回调函数 是否要这个元素  自己 return即可
+                //  let newArr = this.toDoList.filter((v,i)=>{
+                //     // console.log(v);
+                //     // console.log(i);
+                //     if(v.complete==false){
+                //         // 直接return即可
+                //         return v;
+                //     }
+                // })
+
+                // console.log(newArr);
+                // return num;
+
+                return this.toDoList.filter((v, i) => {
+                    if (v.complete == false) {
+                        // 直接return即可
+                        return v;
+                    }
+                }).length;
+            }
+            // 根据条件计算出 需要显示的数组
+            , visiableList() {
+                // // 根据 visibility的值 决定返回的数组
+                // let backArr = [];
+                // for (let i = 0; i < this.toDoList.length; i++) {
+                //     switch (this.visibility) {
+                //         case '全部':
+                //           backArr.push(this.toDoList[i]);
+                //             break;
+                //         case '未完成':
+                //             // 如果未完成只能加 未完成的
+                //            if(this.toDoList[i].complete==false){
+                //                backArr.push(this.toDoList[i]);
+                //            }
+                //             break;
+                //         case '完成':
+                //           // 如果未完成只能加 未完成的
+                //           if(this.toDoList[i].complete==true){
+                //                backArr.push(this.toDoList[i]);
+                //            }
+                //             break;
+                //     }
+                // }
+
+                // // 返回数组即可
+                // return backArr;
+
+                // 使用数组的筛选方法 进行返回
+                return this.toDoList.filter((v, i) => {
+                    // 每一个元素 丢到v中 索引丢到 i中
+                    switch (this.visibility) {
+                        case '全部':
+                            return v;
+                            break;
+                        case '未完成':
+                            // 如果未完成只能加 未完成的
+                            if (v.complete == false) {
+                                return v;
+                            }
+                            break;
+                        case '完成':
+                            // 如果未完成只能加 未完成的
+                            if (v.complete == true) {
+                                return v;
+                            }
+                            break;
+                    }
+                })
+            }
+        }
+
+    })
+
+    // 注册页面关闭事件
+    window.onbeforeunload = function () {
+        //  这是用来设定一个时间, 时间到了, 就会执行一个指定的 method。
+        // setTimeout(onunloadcancel, 10);
+        // return "真的离开?";
+        // window.localStorage.setItem('深圳是一个好地方,除了房价有点贵','111');
+
+        // 保存数据
+        window.localStorage.setItem('SZHM19toDoList',JSON.stringify(toDoList));
+    }
+
+    // window.onunloadcancel = function () {
+    //     alert("取消离开");
+    // }
+
+
+
+</script>
